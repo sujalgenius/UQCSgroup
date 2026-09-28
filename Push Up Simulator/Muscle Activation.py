@@ -35,6 +35,7 @@ PEACE_CONFIRM_FRAMES = 8
 BODY_ALIGNMENT_THRESHOLD_ANGLE = 150
 ALIGNMENT_VISIBILITY = 0.20
 TRACKING_LOSS_GRACE = 0.30
+MIN_REP_DURATION = 0.35
 
 
 #Variables for better side detection
@@ -96,6 +97,7 @@ def calculate_angle(point_a, point_b, point_c):
         return None
     dot_product = ba_x * bc_x + ba_y * bc_y #Dot product of vectors BA and BC
     cosine = dot_product / (mag_ba * mag_bc) #Cosine of vectors BA and BC
+    cosine = np.clip(cosine, -1.0, 1.0)
     return float(np.degrees(np.arccos(cosine))) #Angle in degrees between vectors BA and BC
 
 
@@ -326,6 +328,7 @@ def main():
     bad_side_frames = 0
     rep_form_valid = True
     tracking_lost_start = None
+    rep_start_time = None
 
     if not run_countdown(cap, seconds=5): #Run countdown before starting the pushup tracker
         cap.release()
@@ -374,6 +377,7 @@ def main():
                     up_confirm_start = None        
                     stage = "UP"
                     rep_form_valid = True
+                    rep_start_time = None
 
 
                 # CHECK IF COMPONENTS OF ARMS ARE VISIBLE
@@ -406,6 +410,7 @@ def main():
 
                             if filtered_elbow_angle < UP_ANGLE:
                                 stage = "DESCENDING"
+                                rep_start_time = current_time 
 
                         #Descending stage
                         elif stage == "DESCENDING":
@@ -425,6 +430,7 @@ def main():
                               stage = "UP"
                               down_confirm_start = None
                               rep_form_valid = True
+                              rep_start_time = None
 
                         #DOWN STAGE
                         elif stage == "DOWN":
@@ -443,7 +449,18 @@ def main():
                                     up_confirm_start = current_time
 
                                 elif current_time - up_confirm_start >= UP_CONFIRM_TIME:
-                                    if rep_form_valid:
+                                    if rep_start_time is not None:
+                                        rep_duration = current_time - rep_start_time 
+                                    else:
+                                        rep_duration = None
+
+                                    if rep_duration is None:
+                                        print("Invalid Rep Duration!")
+                                    elif rep_duration < MIN_REP_DURATION:
+                                        print(f"Rep too fast! Duration: {rep_duration:.2f}s. Rep not counted.")
+                                    elif not rep_form_valid:
+                                        print("Rep form invalid! Rep not counted.")
+                                    else:
                                         reps += 1
                                         print(f"Push-up completed! Total: {reps}")
                                         if beep_enabled:
@@ -452,12 +469,11 @@ def main():
                                         check_and_trigger(reps)
                                         check_milestones(reps)
                                         check_target(reps, target_reps)
-                                    else:
-                                        print("Rep form invalid! Rep not counted.")
-
+                                    #Reset variables for next rep
                                     rep_form_valid = True
                                     stage = "UP"
                                     up_confirm_start = None
+                                    rep_start_time = None
                             else:
                                 up_confirm_start = None
                 else:
@@ -472,6 +488,7 @@ def main():
                         rep_form_valid = True          
                         down_confirm_start = None  
                         up_confirm_start = None
+                        rep_start_time = None
 
             else:
                 # NO PERSON DETECTED
@@ -485,6 +502,7 @@ def main():
                     rep_form_valid = True          
                     down_confirm_start = None  
                     up_confirm_start = None
+                    rep_start_time = None
                     draw_text(frame, "ERROR! OUT OF FOCUS!", (w // 2 - 350, h // 2), RED, 4.0, 4)
             
             draw_text(frame, f"REPS: {reps}", (40, 90), GREEN, 4.5, 3)
@@ -536,7 +554,9 @@ def main():
                 start_time = start_timer()
                 locked_side = None
                 bad_side_frames = 0
+                rep_start_time = None
                 rep_form_valid = True
+                tracking_lost_start = None
 
                 reset_motivation()
                 print("[INFO] Counter reset")
@@ -564,6 +584,7 @@ def main():
                     stage = "UP"
                     locked_side = None
                     bad_side_frames = 0
+                    rep_start_time = None
                     rep_form_valid = True
                     down_confirm_start = None
                     up_confirm_start = None
@@ -571,6 +592,7 @@ def main():
                     hip_history.clear()
                     knee_history.clear() 
                     start_time = start_timer()
+                    tracking_lost_start = None
                     reset_motivation()
                 else:
                     break # quit and exit the main loop same as before
