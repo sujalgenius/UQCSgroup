@@ -102,7 +102,11 @@ def calculate_angle(point_a, point_b, point_c):
 
 
 def check_alignment(frame, landmarks, side):
-    ids = BODY[side]
+    left_score = body_visibility_score(landmarks, "left")
+    right_score = body_visibility_score(landmarks, "right")
+    alignment_side = "left" if left_score >= right_score else "right"
+
+    ids = BODY[alignment_side]
     shoulder_raw_coord = landmarks[ids["shoulder"]]
     hip_raw_coord = landmarks[ids["hip"]]
     ankle_raw_coord = landmarks[ids["ankle"]]
@@ -202,6 +206,15 @@ def get_body_angles(landmarks, side):
     if (hip_lm.visibility >= BODY_VISIBILITY and knee_lm.visibility >= BODY_VISIBILITY and ankle_lm.visibility >= BODY_VISIBILITY):
         knee_angle = calculate_angle(get_point(hip_lm), get_point(knee_lm), get_point(ankle_lm))
     return (hip_angle, knee_angle)
+
+def body_visibility_score(landmarks, side):
+    ids = BODY[side]
+
+    shoulder = landmarks[ids["shoulder"]].visibility
+    hip = landmarks[ids["hip"]].visibility
+    ankle = landmarks[ids["ankle"]].visibility
+
+    return min(shoulder, hip, ankle)
 
 def get_chest(frame,landmarks): 
     height, width = frame.shape[:2]
