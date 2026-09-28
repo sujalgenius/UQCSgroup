@@ -36,6 +36,8 @@ BODY_ALIGNMENT_THRESHOLD_ANGLE = 150
 ALIGNMENT_VISIBILITY = 0.20
 TRACKING_LOSS_GRACE = 0.30
 MIN_REP_DURATION = 0.35
+ALIGNMENT_SWITCH_FRAMES = 5
+ALIGNMENT_SWITCH_MARGIN = 0.08
 
 
 #Variables for better side detection
@@ -101,10 +103,7 @@ def calculate_angle(point_a, point_b, point_c):
     return float(np.degrees(np.arccos(cosine))) #Angle in degrees between vectors BA and BC
 
 
-def check_alignment(frame, landmarks, side):
-    left_score = body_visibility_score(landmarks, "left")
-    right_score = body_visibility_score(landmarks, "right")
-    alignment_side = "left" if left_score >= right_score else "right"
+def check_alignment(frame, landmarks, alignment_side):
 
     ids = BODY[alignment_side]
     shoulder_raw_coord = landmarks[ids["shoulder"]]
@@ -216,17 +215,32 @@ def body_visibility_score(landmarks, side):
 
     return min(shoulder, hip, ankle)
 
-def get_chest(frame,landmarks): 
-    height, width = frame.shape[:2]
-    left_shoulder = get_point(landmarks[11])
-    right_shoulder = get_point(landmarks[12])
-    left_hip = get_point(landmarks[23])
-    right_hip = get_point(landmarks[24])
+def update_alignment_side(landmarks, alignment_side, better_side_frames):
 
-    chest_x = 0.5*(left_shoulder[0]+right_shoulder[0])
-    chest_y = left_shoulder[1] - 0.33*(left_shoulder[1] - left_hip[1]) 
-    chest_coord = (int(chest_x * width), int(chest_y * height))
-    return chest_coord
+    left_score = body_visibility_score(landmarks, "left")
+    right_score = body_visibility_score(landmarks, "right")
+
+    # First detection
+    if alignment_side is None:
+        alignment_side = "left" if left_score >= right_score else "right"
+        return alignment_side, 0
+
+    current_score = (left_score if alignment_side == "left" else right_score)
+    other_side = ("right" if alignment_side == "left" else "left")
+    other_score = (right_score if alignment_side == "left" else left_score)
+ 
+    should_switch = (current_score < ALIGNMENT_VISIBILITY and other_score >= ALIGNMENT_VISIBILITY) or other_score > current_score + ALIGNMENT_SWITCH_MARGIN
+
+    if should_switch:
+        better_side_frames += 1
+
+        if better_side_frames >= ALIGNMENT_SWITCH_FRAMES:
+            alignment_side = other_side
+            better_side_frames = 0
+    else:
+        better_side_frames = 0
+
+    return alignment_side, better_side_frames
 
 def draw_text(frame, text, position, color=WHITE, scale=0.7, thickness=2):
     x, y = position
@@ -236,7 +250,7 @@ def draw_text(frame, text, position, color=WHITE, scale=0.7, thickness=2):
     cv2.putText(frame, text, (x, y), cv2.FONT_HERSHEY_PLAIN, scale, color, thickness, cv2.LINE_AA)
 
 
-def draw_active_side(frame, landmarks, side):
+def draw_active_side(frame, landmarks, side, alignment_side):
     height, width = frame.shape[:2] #Get the height and width of the frame
     landmarks_dict = BODY[side] #Retrieve all the landmarks based on the side (left or right) and store them in dict
     points = {}
@@ -249,13 +263,9 @@ def draw_active_side(frame, landmarks, side):
     cv2.line(frame, points["elbow"], points["shoulder"], (0, 255, 255), 5, cv2.LINE_AA)
 
     #Check body alignment:
-    alignment_correct = check_alignment(frame, landmarks, side)
+    alignment_correct = check_alignment(frame, landmarks, alignment_side)
 
-    #CHEST
-    chest_point = get_chest(frame,landmarks)
-    cv2.circle(frame, chest_point, 7, (255, 255, 255), -1)
-    cv2.line(frame, chest_point,points["shoulder"],(100,100,100),5,cv2.LINE_AA)
-    
+
     # TORSO
     if landmarks[landmarks_dict["hip"]].visibility >= BODY_VISIBILITY and landmarks[landmarks_dict["shoulder"]].visibility >= BODY_VISIBILITY:
         cv2.line(frame, points["shoulder"], points["hip"], (0, 255, 255), 5, cv2.LINE_AA) 
@@ -339,6 +349,8 @@ def main():
 
     locked_side = None
     bad_side_frames = 0
+    alignment_side = None
+    alignment_switch_frames = 0
     rep_form_valid = True
     tracking_lost_start = None
     rep_start_time = None
@@ -381,6 +393,7 @@ def main():
                 landmarks = results.pose_landmarks.landmark
 
                 locked_side, bad_side_frames, switched = update_side(landmarks, locked_side, bad_side_frames)
+                alignment_side, alignment_switch_frames = update_alignment_side(landmarks, alignment_side, alignment_switch_frames)
 
                 if switched:
                     elbow_history.clear()
@@ -397,14 +410,14 @@ def main():
                 if arm_visible(landmarks, locked_side):
                     tracking_lost_start = None
 
-                    points, alignment_correct = draw_active_side(frame, landmarks, locked_side) 
+                    points, alignment_correct = draw_active_side(frame, landmarks, locked_side, alignment_side) 
 
                     # ELBOW ANGLE
                     raw_elbow_angle = get_elbow_angle(landmarks, locked_side)                
                     filtered_elbow_angle = filter_angle(elbow_history, raw_elbow_angle)
 
                     # HIP AND KNEE ANGLES
-                    (raw_hip_angle, raw_knee_angle) = get_body_angles(landmarks, locked_side)
+                    (raw_hip_angle, raw_knee_angle) = get_body_angles(landmarks, alignment_side)
                     hip_angle = filter_angle(hip_history, raw_hip_angle)
                     knee_angle = filter_angle(knee_history, raw_knee_angle)
             
@@ -502,6 +515,8 @@ def main():
                         down_confirm_start = None  
                         up_confirm_start = None
                         rep_start_time = None
+                        alignment_side = None
+                        alignment_switch_frames = 0
 
             else:
                 # NO PERSON DETECTED
@@ -516,6 +531,8 @@ def main():
                     down_confirm_start = None  
                     up_confirm_start = None
                     rep_start_time = None
+                    alignment_side = None
+                    alignment_switch_frames = 0
                     draw_text(frame, "ERROR! OUT OF FOCUS!", (w // 2 - 350, h // 2), RED, 4.0, 4)
             
             draw_text(frame, f"REPS: {reps}", (40, 90), GREEN, 4.5, 3)
@@ -566,10 +583,14 @@ def main():
                 knee_history.clear() 
                 start_time = start_timer()
                 locked_side = None
+                alignment_side = None
+                alignment_switch_frames = 0
                 bad_side_frames = 0
                 rep_start_time = None
                 rep_form_valid = True
                 tracking_lost_start = None
+
+
 
                 reset_motivation()
                 print("[INFO] Counter reset")
@@ -606,6 +627,8 @@ def main():
                     knee_history.clear() 
                     start_time = start_timer()
                     tracking_lost_start = None
+                    alignment_side = None
+                    alignment_switch_frames = 0
                     reset_motivation()
                 else:
                     break # quit and exit the main loop same as before
