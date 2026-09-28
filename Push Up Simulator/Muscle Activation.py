@@ -28,12 +28,32 @@ DOWN_ANGLE = 95.5
 UP_ANGLE = 145 
 ARM_VISIBILITY = 0.30 
 BODY_VISIBILITY = 0.20   
-DOWN_CONFIRM_FRAMES = 3
-UP_CONFIRM_FRAMES = 3
+DOWN_CONFIRM_TIME = 0.10 
+UP_CONFIRM_TIME = 0.10
 ANGLE_HISTORY_SIZE = 3
 PEACE_CONFIRM_FRAMES = 8
 BODY_ALIGNMENT_THRESHOLD_ANGLE = 150
-ALIGNMENT_VISIBILITY = 0.30
+ALIGNMENT_VISIBILITY = 0.20
+TRACKING_LOSS_GRACE = 0.30
+
+
+#Variables for better side detection
+SIDE_SWITCH_FRAMES = 20
+SIDE_SWITCH_MARGIN = 0.15
+
+#Target rep key dictionary
+TARGET_KEYS = {
+    ord("1"): 5,
+    ord("2"): 20,
+    ord("3"): 30,
+    ord("4"): 40,
+    ord("5"): 50,
+    ord("6"): 60,
+    ord("7"): 70,
+    ord("8"): 80,
+    ord("9"): 90
+}
+
 
 #COLOUR HEX CODES FOR EASIER REFERENCES
 WHITE = (255, 255, 255)
@@ -83,21 +103,21 @@ def check_alignment(frame, landmarks, side):
     ids = BODY[side]
     shoulder_raw_coord = landmarks[ids["shoulder"]]
     hip_raw_coord = landmarks[ids["hip"]]
-    heel_raw_coord = landmarks[ids["heel"]]
+    ankle_raw_coord = landmarks[ids["ankle"]]
     
-    if (shoulder_raw_coord.visibility < ALIGNMENT_VISIBILITY or hip_raw_coord.visibility < ALIGNMENT_VISIBILITY or  heel_raw_coord.visibility < ALIGNMENT_VISIBILITY):
+    if (shoulder_raw_coord.visibility < ALIGNMENT_VISIBILITY or hip_raw_coord.visibility < ALIGNMENT_VISIBILITY or  ankle_raw_coord.visibility < ALIGNMENT_VISIBILITY):
         draw_text(frame, "Alignment not visible!", (25, 415), ORANGE, 2.5, 2)
         return False 
-    body_angle = calculate_angle(get_point(shoulder_raw_coord), get_point(hip_raw_coord), get_point(heel_raw_coord))
+    body_angle = calculate_angle(get_point(shoulder_raw_coord), get_point(hip_raw_coord), get_point(ankle_raw_coord))
 
     alignment_correct = (body_angle >= BODY_ALIGNMENT_THRESHOLD_ANGLE)
     height, width = frame.shape[:2]
 
     shoulder_pixel_coord = get_pixel(shoulder_raw_coord, width, height) #Convert from normalised coords to pixel coords
-    heel_pixel_coord = get_pixel(heel_raw_coord, width, height)
+    ankle_pixel_coord = get_pixel(ankle_raw_coord, width, height)
     
     if alignment_correct:
-        cv2.line(frame, shoulder_pixel_coord, heel_pixel_coord, GREEN, 6, cv2.LINE_AA)
+        cv2.line(frame, shoulder_pixel_coord, ankle_pixel_coord, GREEN, 6, cv2.LINE_AA)
         draw_text(frame, "Alignment straight!", (25, 415), GREEN, 2.5, 2)
     else:
         draw_text(frame, "Alignment isnt straight!", (25, 415), RED, 2.5, 2)
@@ -125,13 +145,32 @@ def arm_visibility_score(landmarks, side):
     wrist_visibility_score = landmarks[indice_list["wrist"]].visibility                              
     return (shoulder_visibility_score + elbow_visibility_score + wrist_visibility_score) / 3.0 #Weighted score
 
-def choose_side(landmarks):
-    left_score = arm_visibility_score(landmarks, "left") #Retrieve visibility score for left and right side to determine side to pick
+def update_side(landmarks, locked_side, bad_side_frames):
+    left_score = arm_visibility_score(landmarks, "left")
     right_score = arm_visibility_score(landmarks, "right")
-    if right_score >= left_score:
-        return "right"
-    return "left"
+    switched = False
 
+    if locked_side is None:
+        if right_score >= left_score:
+            locked_side = "right"
+        else:
+            locked_side = "left"
+    locked_score = right_score if locked_side == "right" else left_score
+    other_score = left_score if locked_side == "right" else right_score
+
+    if locked_score < ARM_VISIBILITY:
+        bad_side_frames += 1
+    else:
+        bad_side_frames = 0
+
+    if bad_side_frames >= SIDE_SWITCH_FRAMES and other_score > locked_score + SIDE_SWITCH_MARGIN: #Dont switch halfway through rep
+        locked_side = "left" if locked_side == "right" else "right"
+        switched = True
+        bad_side_frames = 0
+
+    return locked_side, bad_side_frames, switched 
+
+    
 def arm_visible(landmarks, side):
     ids = BODY[side]
     shoulder = landmarks[ids["shoulder"]]
@@ -164,10 +203,10 @@ def get_body_angles(landmarks, side):
 
 def get_chest(frame,landmarks): 
     height, width = frame.shape[:2]
-    left_shoulder = get_point(landmarks[12])
-    right_shoulder = get_point(landmarks[11])
-    left_hip = get_point(landmarks[24])
-    right_hip = get_point(landmarks[23])
+    left_shoulder = get_point(landmarks[11])
+    right_shoulder = get_point(landmarks[12])
+    left_hip = get_point(landmarks[23])
+    right_hip = get_point(landmarks[24])
 
     chest_x = 0.5*(left_shoulder[0]+right_shoulder[0])
     chest_y = left_shoulder[1] - 0.33*(left_shoulder[1] - left_hip[1]) 
@@ -222,7 +261,7 @@ def draw_active_side(frame, landmarks, side):
             cv2.circle(frame, points[name], 7, WHITE, -1, cv2.LINE_AA)
             cv2.circle(frame, points[name], 11, WHITE, 2, cv2.LINE_AA)
 
-    return points
+    return points, alignment_correct
 
 def calorie_tracker(frame, reps):
     height, width = frame.shape[:2]
@@ -272,15 +311,21 @@ def main():
 
     #cv2.createTrackbar("Volume", "Side Push-Up Tracker",10, 100, change_music_vol)
 
-    #Default values for reps, stage, bottom_reached, down_frames and up_frames
+    #Default values for reps, stage, down_frames and up_frames
     reps = 0
     stage = "UP"
-    bottom_reached = False
-    down_frames = 0
-    up_frames = 0
+    down_confirm_start = None
+    up_confirm_start = None
     beep_enabled = True
     music_enabled = True
     target_reps = None
+
+    #changes in 28/09/2026
+
+    locked_side = None
+    bad_side_frames = 0
+    rep_form_valid = True
+    tracking_lost_start = None
 
     if not run_countdown(cap, seconds=5): #Run countdown before starting the pushup tracker
         cap.release()
@@ -314,31 +359,38 @@ def main():
             filtered_elbow_angle = None
             hip_angle = None
             knee_angle = None
-            side = "left" # Default fallback
             landmarks = None
         
             if results.pose_landmarks:
                 landmarks = results.pose_landmarks.landmark
 
-                # PICK BEST SIDE
-                side = choose_side(landmarks)
-                left_score = arm_visibility_score(landmarks, "left")
-                right_score = arm_visibility_score(landmarks, "right")
+                locked_side, bad_side_frames, switched = update_side(landmarks, locked_side, bad_side_frames)
+
+                if switched:
+                    elbow_history.clear()
+                    hip_history.clear()
+                    knee_history.clear()
+                    down_confirm_start = None
+                    up_confirm_start = None        
+                    stage = "UP"
+                    rep_form_valid = True
+
 
                 # CHECK IF COMPONENTS OF ARMS ARE VISIBLE
-                if arm_visible(landmarks, side):
+                if arm_visible(landmarks, locked_side):
+                    tracking_lost_start = None
 
-                    points = draw_active_side(frame, landmarks, side) 
+                    points, alignment_correct = draw_active_side(frame, landmarks, locked_side) 
 
                     # ELBOW ANGLE
-                    raw_elbow_angle = get_elbow_angle(landmarks, side)                
+                    raw_elbow_angle = get_elbow_angle(landmarks, locked_side)                
                     filtered_elbow_angle = filter_angle(elbow_history, raw_elbow_angle)
 
-                    # BODY ANGLES
-                    (raw_hip_angle, raw_knee_angle) = get_body_angles(landmarks, side)
+                    # HIP AND KNEE ANGLES
+                    (raw_hip_angle, raw_knee_angle) = get_body_angles(landmarks, locked_side)
                     hip_angle = filter_angle(hip_history, raw_hip_angle)
                     knee_angle = filter_angle(knee_history, raw_knee_angle)
-
+            
                     # SHOW ELBOW ANGLE
                     if filtered_elbow_angle is not None:
                         elbow_x_coord, elbow_y_coord = points["elbow"]
@@ -346,44 +398,94 @@ def main():
 
                     #PUSHUP REP LOGIC
                     if filtered_elbow_angle is not None: 
-                    
-                        if filtered_elbow_angle <= DOWN_ANGLE:
-                            down_frames += 1 
-                            if down_frames >= DOWN_CONFIRM_FRAMES:  
-                                stage = "DOWN"
-                                bottom_reached = True
-                                down_frames = 0
-                        else:
-                            down_frames = 0 
 
-                        # RETURN TO TOP
-                        if filtered_elbow_angle >= UP_ANGLE and bottom_reached: 
-                            up_frames += 1
-                            if up_frames >= UP_CONFIRM_FRAMES:
-                                reps += 1
-                                stage = "UP"
-                                bottom_reached = False
-                                up_frames = 0
-                                print(f"Push-up completed! Total: {reps}")
+                        #Up stage
 
+                        if stage == "UP":
+                            rep_form_valid = True
 
-                                if beep_enabled:
-                                    play_beep()
-                                check_and_trigger(reps)
-                                check_milestones(reps)
-                                check_target(reps, target_reps)
+                            if filtered_elbow_angle < UP_ANGLE:
+                                stage = "DESCENDING"
 
-                        else:
-                            up_frames = 0
+                        #Descending stage
+                        elif stage == "DESCENDING":
+                            if not alignment_correct:
+                                rep_form_valid = False
+                            if filtered_elbow_angle <= DOWN_ANGLE:
+
+                                if down_confirm_start is None:
+                                  down_confirm_start = current_time
+
+                                elif current_time - down_confirm_start >= DOWN_CONFIRM_TIME:
+                                  stage = "DOWN"
+                                  down_confirm_start = None
+                            else:
+                                down_confirm_start = None
+                            if filtered_elbow_angle >= UP_ANGLE:
+                              stage = "UP"
+                              down_confirm_start = None
+                              rep_form_valid = True
+
+                        #DOWN STAGE
+                        elif stage == "DOWN":
+                            if not alignment_correct:
+                                rep_form_valid = False
+                            if filtered_elbow_angle > DOWN_ANGLE:
+                                stage = "ASCENDING"
+
+                        #ASCENDING STAGE
+                        elif stage == "ASCENDING":
+                            if not alignment_correct:
+                                rep_form_valid = False
+
+                            if filtered_elbow_angle >= UP_ANGLE:
+                                if up_confirm_start is None:
+                                    up_confirm_start = current_time
+
+                                elif current_time - up_confirm_start >= UP_CONFIRM_TIME:
+                                    if rep_form_valid:
+                                        reps += 1
+                                        print(f"Push-up completed! Total: {reps}")
+                                        if beep_enabled:
+                                             play_beep()
+
+                                        check_and_trigger(reps)
+                                        check_milestones(reps)
+                                        check_target(reps, target_reps)
+                                    else:
+                                        print("Rep form invalid! Rep not counted.")
+
+                                    rep_form_valid = True
+                                    stage = "UP"
+                                    up_confirm_start = None
+                            else:
+                                up_confirm_start = None
                 else:
                     elbow_history.clear()
+                    hip_history.clear()
+                    knee_history.clear()
+                    if tracking_lost_start is None:
+                        tracking_lost_start = current_time
+                    elif current_time - tracking_lost_start >= TRACKING_LOSS_GRACE:
+                        #Abort current rep, reset stage to UP, and reset rep form validity
+                        stage = "UP"
+                        rep_form_valid = True          
+                        down_confirm_start = None  
+                        up_confirm_start = None
 
             else:
                 # NO PERSON DETECTED
                 elbow_history.clear()
                 hip_history.clear()
                 knee_history.clear()
-                draw_text(frame, "ERROR! OUT OF FOCUS!", (w // 2 - 350, h // 2), RED, 4.0, 4)
+                if tracking_lost_start is None:
+                    tracking_lost_start = current_time
+                elif current_time - tracking_lost_start >= TRACKING_LOSS_GRACE:
+                    stage = "UP"
+                    rep_form_valid = True          
+                    down_confirm_start = None  
+                    up_confirm_start = None
+                    draw_text(frame, "ERROR! OUT OF FOCUS!", (w // 2 - 350, h // 2), RED, 4.0, 4)
             
             draw_text(frame, f"REPS: {reps}", (40, 90), GREEN, 4.5, 3)
 
@@ -405,22 +507,6 @@ def main():
             elapsed_str = get_total_time(start_time)
             draw_text(frame, f"Time: {elapsed_str}", (w - 220, 100), WHITE, 1.2, 2)
 
-            #DISPLAY VALUES.
-            #if results.pose_landmarks and arm_visible(landmarks, side):
-                #if filtered_elbow_angle is not None:
-                    #draw_text(frame, f"Elbow: {filtered_elbow_angle:.1f} deg", (25, 225), TORQOISE_BLUE, 1.3, 1)
-
-                #if hip_angle is not None:
-                    #hip_color = GREEN if hip_angle >= 160 else RED
-                    #draw_text(frame, f"Hip: {hip_angle:.1f}", (25, 255), hip_color, 1.3, 1)
-                #else:
-                    #draw_text(frame, "Hip not visible!", (25, 255), RED, 1.3, 1)
-
-                #if knee_angle is not None:
-                    #knee_color = GREEN if knee_angle >= 160 else RED
-                    #draw_text(frame, f"Knee: {knee_angle:.2f}", (25, 285), knee_color, 1.3, 1)
-                #else:
-                    #draw_text(frame, "Knee not visible!", (25, 285), RED, 1.3, 1)
 
             # DISPLAY CALORIES
             calorie_tracker(frame, reps)
@@ -441,14 +527,16 @@ def main():
             elif key == ord("r"):  
                 #r key for reset. Reset reps, assume user is in the "up" position, clear all elbow history to reset weighting
                 reps = 0
-                stage = "UP"
-                bottom_reached = False
-                down_frames = 0
-                up_frames = 0
+                stage = "UP" 
+                down_confirm_start = None
+                up_confirm_start = None
                 elbow_history.clear()
                 hip_history.clear()
                 knee_history.clear() 
                 start_time = start_timer()
+                locked_side = None
+                bad_side_frames = 0
+                rep_form_valid = True
 
                 reset_motivation()
                 print("[INFO] Counter reset")
@@ -474,9 +562,11 @@ def main():
                 if choice == "restart":
                     reps = 0
                     stage = "UP"
-                    bottom_reached = False
-                    down_frames = 0
-                    up_frames = 0
+                    locked_side = None
+                    bad_side_frames = 0
+                    rep_form_valid = True
+                    down_confirm_start = None
+                    up_confirm_start = None
                     elbow_history.clear()
                     hip_history.clear()
                     knee_history.clear() 
@@ -484,25 +574,11 @@ def main():
                     reset_motivation()
                 else:
                     break # quit and exit the main loop same as before
+            elif key in TARGET_KEYS:
+                target_reps = TARGET_KEYS[key]
+                _target_announced = False 
+                print(f"[INFO] Target reps set to: {target_reps}") #For debugging 
 
-            elif key == ord("1"):
-                target_reps = 5
-            elif key == ord("2") or reps == 5:
-                target_reps = 20
-            elif key == ord("3") or reps == 20:
-                target_reps = 30 
-            elif key == ord("4") or reps == 30:
-                target_reps = 40
-            elif key == ord("5")or reps == 50:
-                target_reps = 50
-            elif key == ord("6") or reps == 60:
-                target_reps = 60
-            elif key == ord("7") or reps == 70:
-                target_reps = 70
-            elif key == ord("8") or reps == 80:
-                target_reps = 80
-            elif key == ord("9") or reps == 90:
-                target_reps = 90
             elif key == ord("d"):
                     music_value += 10
                     change_music_vol(music_value)
