@@ -646,7 +646,9 @@ def main():
             elif key == ord("a"):
                     music_value -= 10
                     change_music_vol(music_value)
-        
+            elif key == ord("i"):
+                show_instructions(image_filename="instructions.png")
+                
     finally:
         pygame.mixer.music.stop()
         cap.release()
