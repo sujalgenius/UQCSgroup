@@ -148,7 +148,7 @@ def arm_visibility_score(landmarks, side):
     shoulder_visibility_score = landmarks[indice_list["shoulder"]].visibility
     elbow_visibility_score = landmarks[indice_list["elbow"]].visibility          
     wrist_visibility_score = landmarks[indice_list["wrist"]].visibility                              
-    return (shoulder_visibility_score + elbow_visibility_score + wrist_visibility_score) / 3.0 #Weighted score
+    return min(shoulder_visibility_score, elbow_visibility_score, wrist_visibility_score) #Return the minimum visibility score of the 3 joints
 
 def update_side(landmarks, locked_side, bad_side_frames):
     left_score = arm_visibility_score(landmarks, "left")
@@ -163,16 +163,19 @@ def update_side(landmarks, locked_side, bad_side_frames):
     locked_score = right_score if locked_side == "right" else left_score
     other_score = left_score if locked_side == "right" else right_score
 
-    if locked_score < ARM_VISIBILITY:
+    looked_bad = locked_score < ARM_VISIBILITY
+    other_looks_plausible = other_score >= ARM_VISIBILITY or other_score > locked_score + SIDE_SWITCH_MARGIN
+
+    if looked_bad and other_looks_plausible:
         bad_side_frames += 1
     else:
         bad_side_frames = 0
 
-    if bad_side_frames >= SIDE_SWITCH_FRAMES and other_score > locked_score + SIDE_SWITCH_MARGIN: #Dont switch halfway through rep
+    if bad_side_frames >= SIDE_SWITCH_FRAMES:
         locked_side = "left" if locked_side == "right" else "right"
-        switched = True
         bad_side_frames = 0
-
+        switched = True
+    
     return locked_side, bad_side_frames, switched 
 
     
