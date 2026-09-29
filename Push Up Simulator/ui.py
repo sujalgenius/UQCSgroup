@@ -437,12 +437,12 @@ class MainWindow(QMainWindow):
         (0, "IRON", "#9ca3af"),
         (5, "BRONZE", "#cd7f32"),
         (9, "SILVER", "#cbd5e1"),
-        (13, "GOLD", "#facc15"),
-        (17, "PLATINUM", "#2dd4bf"),
-        (21, "DIAMOND", "#60a5fa"),
-        (25, "ASCENDANT", "#4ade80"),
-        (30, "IMMORTAL", "#f43f5e"),
-        (40, "RADIANT", "#fde68a")]
+        (17, "GOLD", "#facc15"),
+        (29, "PLATINUM", "#2dd4bf"),
+        (37, "DIAMOND", "#60a5fa"),
+        (49, "ASCENDANT", "#4ade80"),
+        (58, "IMMORTAL", "#f43f5e"),
+        (70, "RADIANT", "#fde68a") ]
 
         for index in range(len(ranks) - 1, -1, -1):
             threshold, rank, colour = ranks[index]
