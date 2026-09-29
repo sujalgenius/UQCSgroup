@@ -15,7 +15,7 @@ class MainWindow(QMainWindow):
         super().__init__()
 
         self.setWindowTitle("Push-Up Tracker")
-        self.resize(1200, 700)
+        self.resize(1450, 750)
 
         self.cap = cv2.VideoCapture(0)
         self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, tracker.CAM_WIDTH)
@@ -64,12 +64,96 @@ class MainWindow(QMainWindow):
         content = QHBoxLayout()
         content.setSpacing(16)
 
+        analysis_panel = QFrame()
+        analysis_panel.setMinimumWidth(210)
+        analysis_panel.setMaximumWidth(240)
+
+        analysis_panel.setStyleSheet(
+    """
+    QFrame {
+        background: #161b22;
+        border: 1px solid #30363d;
+        border-radius: 12px;
+    }
+
+    QLabel {
+        border: none;
+        color: white;
+    }
+    """)
+        
+        analysis_layout = QVBoxLayout(analysis_panel)
+        analysis_layout.setContentsMargins(16, 18, 16, 18)
+        analysis_layout.setSpacing(12)
+
+
+        analysis_title = QLabel("REP ANALYSER")
+
+        analysis_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        analysis_title.setStyleSheet(
+    """
+    font-size: 19px;
+    font-weight: 900;
+    color: #00d9ff;
+    """
+)
+
+
+        self.analysis_rep_label = QLabel("WAITING\nFOR REP")
+
+        self.analysis_rep_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        self.analysis_rep_label.setStyleSheet(
+    """
+    font-size: 16px;
+    font-weight: 800;
+    color: #8b949e;
+    padding: 10px;
+    """)
+
+        self.analysis_score_label = QLabel(
+    "SCORE\n--")
+        self.analysis_score_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.analysis_score_label.setStyleSheet(
+    """
+    font-size: 28px;
+    font-weight: 900;
+    color: white;
+    """)
+
+        self.analysis_depth_label = QLabel("DEPTH\n--")
+        self.analysis_tempo_label = QLabel("TEMPO\n--")
+        self.analysis_form_label = QLabel("FORM\n--")
+        self.analysis_duration_label = QLabel("DURATION\n--")
+        self.analysis_min_angle_label = QLabel("MIN ANGLE\n--")
+
+        for label in (self.analysis_depth_label, self.analysis_tempo_label, self.analysis_form_label, self.analysis_duration_label, self.analysis_min_angle_label):
+            label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            label.setStyleSheet(
+        """
+        font-size: 15px;
+        font-weight: 700;
+        padding: 5px;
+        """)
+
+
+        analysis_layout.addWidget(analysis_title)
+        analysis_layout.addWidget(self.analysis_rep_label)
+        analysis_layout.addWidget(self.analysis_score_label)
+        analysis_layout.addWidget(self.analysis_depth_label)
+        analysis_layout.addWidget(self.analysis_tempo_label)
+        analysis_layout.addWidget(self.analysis_form_label)
+        analysis_layout.addWidget(self.analysis_duration_label)
+        analysis_layout.addWidget(self.analysis_min_angle_label)
+        analysis_layout.addStretch()
+
+
         self.camera_label = QLabel("Opening camera...")
         self.camera_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.camera_label.setMinimumSize(0, 0) #Automatically set size
         self.camera_label.setStyleSheet("background: #05070a; border: 1px solid #30363d; border-radius: 12px; color: #8b949e;")
         self.camera_label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Ignored)
-        content.addWidget(self.camera_label, 3)
 
         side = QFrame()
         side.setStyleSheet("QFrame { background: #161b22; border: 1px solid #30363d; border-radius: 12px; } QLabel { color: white; border: none; }")
@@ -79,7 +163,7 @@ class MainWindow(QMainWindow):
         stats = QVBoxLayout(side)
         stats.setContentsMargins(18, 18, 18, 18)
         stats.setSpacing(8) 
-    
+
 
         self.rank_label = QLabel("IRON")
         self.rank_reps_label = QLabel("0 PUSHUPS")
@@ -137,6 +221,12 @@ class MainWindow(QMainWindow):
             button.setStyleSheet("QPushButton { background: #21262d; color: white; border: 1px solid #30363d; border-radius: 8px; font-weight: 700; } QPushButton:hover { background: #30363d; }")
             stats.addWidget(button)
 
+        content.addWidget(analysis_panel, 1)
+        content.addWidget(self.camera_label, 4)
+        content.addWidget(side, 1)
+        main_layout.addLayout(content)
+        content.addWidget(analysis_panel, 1)
+        content.addWidget(self.camera_label, 4)
         content.addWidget(side, 1)
         main_layout.addLayout(content)
 
@@ -153,6 +243,10 @@ class MainWindow(QMainWindow):
         self.goal_input.setRange(1, 200)            
         self.goal_input.setValue(20)
         self.goal_button = QPushButton("Set Goal")
+
+        self.rep_history = []
+        self.current_rep_min_angle = None
+        self.current_rep_alignment_good = True
 
         stats.addWidget(self.goal_label)
         stats.addWidget(self.goal_input)
@@ -227,6 +321,8 @@ class MainWindow(QMainWindow):
         self.up_confirm_start = None
         self.rep_form_valid = True
         self.rep_start_time = None
+        self.current_rep_min_angle = None
+        self.current_rep_alignment_good = True
 
     def handle_tracking_loss(self, current_time):
         self.clear_histories()
@@ -277,6 +373,14 @@ class MainWindow(QMainWindow):
                 raw_elbow_angle = tracker.get_elbow_angle(landmarks, self.locked_side)
                 filtered_elbow_angle = tracker.filter_angle(tracker.elbow_history, raw_elbow_angle)
 
+                if self.stage in ("DESCENDING", "DOWN", "ASCENDING"):   #Retrieve lowest angle for quality check
+                    if self.current_rep_min_angle is None:
+                        self.current_rep_min_angle = filtered_elbow_angle
+                    else:
+                        self.current_rep_min_angle = min(self.current_rep_min_angle, filtered_elbow_angle)
+
+            
+
                 raw_hip_angle, raw_knee_angle = tracker.get_body_angles(landmarks, self.alignment_side)
                 tracker.filter_angle(tracker.hip_history, raw_hip_angle)
                 tracker.filter_angle(tracker.knee_history, raw_knee_angle)
@@ -291,9 +395,13 @@ class MainWindow(QMainWindow):
                             self.stage = "DESCENDING"
                             self.rep_start_time = current_time
 
+                            self.current_rep_min_angle = filtered_elbow_angle
+                            self.current_rep_alignment_good = True
+
                     elif self.stage == "DESCENDING":
                         if not alignment_correct:
                             self.rep_form_valid = False
+                            self.current_rep_alignment_good = False
 
                         if filtered_elbow_angle <= tracker.DOWN_ANGLE:
                             if self.down_confirm_start is None:
@@ -310,12 +418,14 @@ class MainWindow(QMainWindow):
                     elif self.stage == "DOWN":
                         if not alignment_correct:
                             self.rep_form_valid = False
+                            self.current_rep_alignment_good = False
                         if filtered_elbow_angle > tracker.DOWN_ANGLE:
                             self.stage = "ASCENDING"
 
                     elif self.stage == "ASCENDING":
                         if not alignment_correct:
                             self.rep_form_valid = False
+                            self.current_rep_alignment_good = False
 
                         if filtered_elbow_angle >= tracker.UP_ANGLE:
                             if self.up_confirm_start is None:
@@ -332,6 +442,30 @@ class MainWindow(QMainWindow):
                                 else:
                                     self.reps += 1
                                     form_text = "GOOD"
+
+                                    analyse = self.analyse_rep(rep_duration)
+                                    self.rep_history.append(analyse)
+
+                                    self.analysis_rep_label.setText(f"REP {self.reps}")
+                                    self.analysis_score_label.setText(f"SCORE\n{analyse['score']}/100")
+                                    self.analysis_depth_label.setText(f"DEPTH\n{analyse['depth']}")
+                                    self.analysis_tempo_label.setText(f"TEMPO\n{analyse['tempo']}")
+                                    self.analysis_form_label.setText(f"FORM\n{analyse['form']}")
+                                    self.analysis_duration_label.setText(f"DURATION\n{analyse['duration']:.2f}s")
+                                    self.analysis_min_angle_label.setText(f"MIN ANGLE\n{analyse['min_angle']:.1f}°")
+
+                                    score = analyse["score"]
+                                    if score >= 90:
+                                         score_colour = "#00ff78"
+                                    elif score >= 75:
+                                         score_colour = "#facc15"
+                                    else:
+                                         score_colour = "#ff4d4d"
+                                         self.analysis_score_label.setStyleSheet(f"""
+                                        font-size: 28px;
+                                        font-weight: 900;
+                                        color: {score_colour};
+                                        """)
 
                                     #Update rank, play animation
                                     self.update_rank_display()
@@ -418,6 +552,26 @@ class MainWindow(QMainWindow):
         self.tracking_lost_start = None
         self.clear_histories()
         self.start_time = time.monotonic()
+
+    def analyse_rep(self, rep_duration):
+        min_angle = self.current_rep_min_angle
+        if min_angle is None:
+            depth_score = 0
+        elif min_angle <= tracker.DOWN_ANGLE:
+            depth_score = 100
+        else:
+            depth_score = max(0, int(100 - (min_angle - tracker.DOWN_ANGLE) * 4))
+        ideal_duration = 1.5
+        tempo_score = max(0, int(100 - abs(rep_duration - ideal_duration) * 40))
+
+        if self.current_rep_alignment_good:
+            form_score = 100
+        else:
+            form_score = 50
+
+        overall_score = int(depth_score * 0.40 + tempo_score * 0.25 + form_score * 0.35)
+        return {"score": overall_score, "depth": depth_score, "tempo": tempo_score, "form": form_score, "duration": rep_duration, "min_angle": min_angle}
+
 
     def toggle_beep(self):
         self.beep_enabled = not self.beep_enabled
