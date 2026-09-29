@@ -8,7 +8,7 @@ from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QImage, QPixmap
 from PySide6.QtWidgets import QApplication, QFrame, QHBoxLayout, QLabel, QMainWindow, QPushButton, QVBoxLayout, QWidget, QSlider, QSpinBox, QSizePolicy, QStackedWidget
 
-import main as tracker
+import Main as tracker
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -327,6 +327,33 @@ class MainWindow(QMainWindow):
         self.form_label.setText(f"FORM\n{form_text}")
         self.angle_label.setText(f"ELBOW ANGLE\n{filtered_elbow_angle:.1f}" if filtered_elbow_angle is not None else "ELBOW ANGLE\nN/A")
         self.time_label.setText(f"TIME\n{elapsed_text}")
+
+
+        self.reps_label.setStyleSheet("font-size: 18px; font-weight: 700; padding: 6px; color: #00ff78;") #CSS for reps label
+        if form_text == "GOOD":
+            form_colour = "00ff78"
+        elif form_text in ("BAD", "BAD FORM", "INVALID FORM", "TOO FAST"):
+            form_colour = "#ff4d4d"
+        elif form_text in ("TRACKING LOST", "NO PERSON"):
+            form_colour = "#ffa500"
+        else:
+            form_colour = "#ffffff"
+        self.form_label.setStyleSheet(f"font-size: 18px; font-weight: 700; padding: 6px; color: {form_colour};")
+
+        if self.stage == "UP":
+            stage_colour = "#00ff78"
+        elif self.stage == "DOWN":
+            stage_colour = "#ff4d4d"
+        else:
+            stage_colour = "#ffa500"
+
+        self.stage_label.setStyleSheet(f"font-size: 18px; font-weight: 700; padding: 6px; color: {stage_colour};")
+
+        self.angle_label.setStyleSheet("font-size: 18px; font-weight: 700; padding: 6px; color: #00d9ff;")
+
+        self.time_label.setStyleSheet("font-size: 18px; font-weight: 700; padding: 6px; color: #ffffff;")
+
+
         if self.target_reps is not None:
             if self.reps >= self.target_reps:
                 self.goal_label.setText(f"GOAL\n{self.reps}/{self.target_reps} ✓")
