@@ -5,7 +5,7 @@ import pygame
 import os
 
 from PySide6.QtCore import Qt, QTimer, QPropertyAnimation
-from PySide6.QtGui import QImage, QPixmap
+from PySide6.QtGui import QImage, QPixmap, QShortcut
 from PySide6.QtWidgets import QApplication, QFrame, QHBoxLayout, QLabel, QMainWindow, QPushButton, QVBoxLayout, QWidget, QSlider, QSpinBox, QSizePolicy, QStackedWidget, QProgressBar, QGraphicsOpacityEffect
 
 import Main as tracker
@@ -305,6 +305,35 @@ class MainWindow(QMainWindow):
             summary_layout.addWidget(self.quit_button)
             summary_layout.addStretch()
             self.summary_page.setStyleSheet("background: #0d1117;")
+
+        #tracker.show_instructions()
+
+        #Shortcuts
+        reset_shortcut = QShortcut(self)
+        reset_shortcut.setKey(Qt.Key.Key_R)
+        reset_shortcut.activated.connect(self.reset_tracker)
+
+        quit_shortcut = QShortcut(self)
+        quit_shortcut.setKey(Qt.Key.Key_Q)
+        quit_shortcut.activated.connect(self.close)
+
+        end_session_shortcut = QShortcut(self)
+        end_session_shortcut.setKey(Qt.Key.Key_E)
+        end_session_shortcut.activated.connect(self.end_session)
+
+        beep_toggle_shortcut = QShortcut(self)
+        beep_toggle_shortcut.setKey(Qt.Key.Key_B)
+        beep_toggle_shortcut.activated.connect(self.toggle_beep)
+
+        music_toggle_shortcut = QShortcut(self)
+        music_toggle_shortcut.setKey(Qt.Key.Key_M)
+        music_toggle_shortcut.activated.connect(self.toggle_music)
+
+        #instructions_shortcut = QShortcut(self)
+        #instructions_shortcut.setKey(Qt.Key.Key_I)
+        #instructions_shortcut.activated.connect(tracker.show_instructions)
+
+
 
     def clear_histories(self):
         tracker.elbow_history.clear()
@@ -659,6 +688,7 @@ class MainWindow(QMainWindow):
         self.reset_tracker()
         self.stack.setCurrentWidget(self.tracker_page)
         self.timer.start(30)
+
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
