@@ -6,10 +6,9 @@ import os
 
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QImage, QPixmap
-from PySide6.QtWidgets import QApplication, QFrame, QHBoxLayout, QLabel, QMainWindow, QPushButton, QVBoxLayout, QWidget, QSlider, QSpinBox, QSizePolicy
+from PySide6.QtWidgets import QApplication, QFrame, QHBoxLayout, QLabel, QMainWindow, QPushButton, QVBoxLayout, QWidget, QSlider, QSpinBox, QSizePolicy, QStackedWidget
 
 import main as tracker
-
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -26,6 +25,7 @@ class MainWindow(QMainWindow):
         self.reps = 0
         self.stage = "UP"
         self.target_reps = None
+        self.last_frame = None
 
         self.beep_enabled = True
         self.music_enabled = True
@@ -43,10 +43,16 @@ class MainWindow(QMainWindow):
         self.tracking_lost_start = None
         self.rep_start_time = None
 
-        root = QWidget()
-        self.setCentralWidget(root)
 
-        main_layout = QVBoxLayout(root)
+        self.stack = QStackedWidget()
+        self.setCentralWidget(self.stack)
+    
+        self.tracker_page = QWidget()
+        self.summary_page = QWidget()
+        self.stack.addWidget(self.tracker_page)
+        self.stack.addWidget(self.summary_page)
+
+        main_layout = QVBoxLayout(self.tracker_page)
         main_layout.setContentsMargins(20, 20, 20, 20)
         main_layout.setSpacing(14)
 
@@ -96,8 +102,9 @@ class MainWindow(QMainWindow):
         self.reset_button = QPushButton("Reset")
         self.beep_button = QPushButton("Beep: ON")
         self.music_button = QPushButton("Music: ON")
+        self.end_button = QPushButton("End Session")
     
-        for button in (self.reset_button, self.beep_button, self.music_button):
+        for button in (self.reset_button, self.beep_button, self.music_button, self.end_button):
             button.setMinimumHeight(42)
             button.setStyleSheet("QPushButton { background: #21262d; color: white; border: 1px solid #30363d; border-radius: 8px; font-weight: 700; } QPushButton:hover { background: #30363d; }")
             stats.addWidget(button)
@@ -124,18 +131,61 @@ class MainWindow(QMainWindow):
 
         stats.addStretch()
 
-
-
-
         self.reset_button.clicked.connect(self.reset_tracker)
         self.beep_button.clicked.connect(self.toggle_beep)
         self.music_button.clicked.connect(self.toggle_music)
         self.volume_slider.valueChanged.connect(self.change_volume)
         self.goal_button.clicked.connect(self.set_goal)
+        self.end_button.clicked.connect(self.end_session)
+
+
 
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.update_frame)
         self.timer.start(30)
+
+        summary_layout = QVBoxLayout(self.summary_page)
+        summary_layout.setContentsMargins(80, 80, 80, 80)
+        summary_layout.setSpacing(30)
+        summary_title = QLabel("WORKOUT SUMMARY")
+        summary_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        summary_title.setStyleSheet("font-size: 36px; font-weight: 800; color: white;")
+
+        self.summary_reps = QLabel("TOTAL REPS\n0")
+        self.summary_calories = QLabel("CALORIES\n0.0 kcal")
+        self.summary_time = QLabel("TIME\n00:00")
+
+        for label in self.summary_reps, self.summary_calories, self.summary_time:
+            label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            label.setStyleSheet(
+        "font-size: 26px; font-weight: 700; color: white; padding: 20px;")
+        self.restart_button = QPushButton("Restart Workout")
+        self.quit_button = QPushButton("Quit")
+        self.restart_button.clicked.connect(self.restart_session)
+        self.quit_button.clicked.connect(self.close)
+
+        for button in (self.restart_button, self.quit_button):
+            button.setMinimumHeight(50)
+            button.setStyleSheet(
+        "QPushButton {"
+        "background: #21262d;"
+        "color: white;"
+        "border: 1px solid #30363d;"
+        "border-radius: 8px;"
+        "font-size: 18px;"
+        "font-weight: 700;"
+        "}"
+        "QPushButton:hover { background: #30363d; }"
+    )
+            summary_layout.addStretch()
+            summary_layout.addWidget(summary_title)
+            summary_layout.addWidget(self.summary_reps)
+            summary_layout.addWidget(self.summary_calories)
+            summary_layout.addWidget(self.summary_time)
+            summary_layout.addWidget(self.restart_button)
+            summary_layout.addWidget(self.quit_button)
+            summary_layout.addStretch()
+            self.summary_page.setStyleSheet("background: #0d1117;")
 
     def clear_histories(self):
         tracker.elbow_history.clear()
@@ -167,11 +217,13 @@ class MainWindow(QMainWindow):
 
         current_time = time.monotonic()
         frame = cv2.flip(frame, 1)
+        self.last_frame = frame.copy()
 
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         rgb.flags.writeable = False
         results = tracker.pose.process(rgb)
         rgb.flags.writeable = True
+    
 
         form_text = "WAITING"
         filtered_elbow_angle = None
@@ -330,6 +382,25 @@ class MainWindow(QMainWindow):
         tracker.pose.close()
         event.accept()
 
+    def end_session(self):
+        self.timer.stop()
+
+        passed_time = time.monotonic() - self.start_time
+        calories = self.reps * tracker.CALORIES_PER_REP
+
+        minutes = int(passed_time // 60)
+        seconds = int(passed_time % 60)
+
+        self.summary_reps.setText(f"TOTAL REPS\n{self.reps}")
+        self.summary_calories.setText(f"CALORIES\n{calories:.1f} kcal")
+        self.summary_time.setText(f"TIME\n{minutes:02d}:{seconds:02d}")
+
+        self.stack.setCurrentWidget(self.summary_page)
+
+    def restart_session(self):
+        self.reset_tracker()
+        self.stack.setCurrentWidget(self.tracker_page)
+        self.timer.start(30)
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
