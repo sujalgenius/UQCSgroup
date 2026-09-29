@@ -8,13 +8,15 @@ MILESTONE_STEP = 10 # trigger every 10 reps: 10, 20, 30... infinity
 BANNER_DURATION = 2.5 # the number of seconds the text stays on the screen
 
 MILESTONE_PHRASES = [
-    "Keep going sweetie!",
+    #"Keep going sweetie!",
+    "Keep going!",
     "Nice work human!",
     "Stay strong!",
     "You're the best!",
-    "You're tung tung tung tung sahooring!",
+    #"You're tung tung tung tung sahooring!",
     "That's the spirit!",
-    "Push sweetheart!",
+    #"Push sweetheart!",
+    "Push!",
     "You are a machine!",
     "Why did the egg cross the road? Because the chicken did!",
     "Your arms look so good!",
