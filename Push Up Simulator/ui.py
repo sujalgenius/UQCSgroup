@@ -57,6 +57,7 @@ class MainWindow(QMainWindow):
         main_layout.setSpacing(14)
 
         title = QLabel("PUSH-UP TRACKER")
+        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         title.setStyleSheet("font-size: 28px; font-weight: 800; color: white;")
         main_layout.addWidget(title)
 
@@ -243,12 +244,14 @@ class MainWindow(QMainWindow):
         if not success:
             return
 
-        current_time = time.monotonic()
+        current_time = time.monotonic() #Current_time is an increasing clock. Current_time records current time, and differences from it are important
         frame = cv2.flip(frame, 1)
         self.last_frame = frame.copy()
 
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         rgb.flags.writeable = False
+
+        #Convert tracker to rgb
         results = tracker.pose.process(rgb)
         rgb.flags.writeable = True
     
@@ -257,17 +260,19 @@ class MainWindow(QMainWindow):
         filtered_elbow_angle = None
 
         if results.pose_landmarks:
+            #Retrive landmarks from results
             landmarks = results.pose_landmarks.landmark
             self.locked_side, self.bad_side_frames, switched = tracker.update_side(landmarks, self.locked_side, self.bad_side_frames)
             self.alignment_side, self.alignment_switch_frames = tracker.update_alignment_side(landmarks, self.alignment_side, self.alignment_switch_frames)
 
+            #If arm switched, then clear history of deques containing the body angles to get specific average for specific side
             if switched:
                 self.clear_histories()
                 self.reset_rep_state()
 
             if tracker.arm_visible(landmarks, self.locked_side):
                 self.tracking_lost_start = None
-                points, alignment_correct = tracker.draw_active_side(frame, landmarks, self.locked_side, self.alignment_side, show_text = False)
+                _, alignment_correct = tracker.draw_active_side(frame, landmarks, self.locked_side, self.alignment_side, show_text = False)
 
                 raw_elbow_angle = tracker.get_elbow_angle(landmarks, self.locked_side)
                 filtered_elbow_angle = tracker.filter_angle(tracker.elbow_history, raw_elbow_angle)
@@ -327,8 +332,12 @@ class MainWindow(QMainWindow):
                                 else:
                                     self.reps += 1
                                     form_text = "GOOD"
+
+                                    #Update rank, play animation
                                     self.update_rank_display()
                                     self.animate_streak()
+
+                                    #Play beep sound
                                     if self.beep_enabled:
                                         tracker.play_beep()
                                     tracker.check_and_trigger(self.reps)
@@ -470,7 +479,7 @@ class MainWindow(QMainWindow):
         self.rank_progress.setValue(progress)
 
         if next_rank is None:
-            self.rank_progress.setFormat("MAX RANK")
+            self.rank_progress.setFormat("MAX RANK!")
         else:
             self.rank_progress.setFormat(f"{progress}% TO {next_rank}")
 
