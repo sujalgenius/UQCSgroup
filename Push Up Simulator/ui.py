@@ -4,9 +4,9 @@ import cv2
 import pygame
 import os
 
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import Qt, QTimer, QPropertyAnimation
 from PySide6.QtGui import QImage, QPixmap
-from PySide6.QtWidgets import QApplication, QFrame, QHBoxLayout, QLabel, QMainWindow, QPushButton, QVBoxLayout, QWidget, QSlider, QSpinBox, QSizePolicy, QStackedWidget
+from PySide6.QtWidgets import QApplication, QFrame, QHBoxLayout, QLabel, QMainWindow, QPushButton, QVBoxLayout, QWidget, QSlider, QSpinBox, QSizePolicy, QStackedWidget, QProgressBar, QGraphicsOpacityEffect
 
 import Main as tracker
 
@@ -80,11 +80,38 @@ class MainWindow(QMainWindow):
         stats.setSpacing(8) 
     
 
-        self.reps_label = QLabel("REPS\n0")
+        self.rank_label = QLabel("IRON")
+        self.rank_reps_label = QLabel("0 PUSHUPS")
+        self.streak_label = QLabel("🔥 STREAK 0")
+        self.rank_progress = QProgressBar()
         self.stage_label = QLabel("POSITION\nUP")
         self.form_label = QLabel("FORM\nWAITING")
         self.angle_label = QLabel("ELBOW ANGLE\n0.0")
         self.time_label = QLabel("TIME\n00:00")
+
+
+        self.rank_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.rank_reps_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.streak_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.rank_label.setStyleSheet("font-size: 30px; font-weight: 900; color: #9ca3af;")
+        self.rank_reps_label.setStyleSheet("font-size: 20px; font-weight: 800; color: white;")
+        self.streak_label.setStyleSheet("font-size: 18px; font-weight: 800; color: #ff8c32;")
+        self.rank_progress.setRange(0, 100)
+        self.rank_progress.setValue(0)
+        self.rank_progress.setTextVisible(True)
+        stats.addWidget(self.rank_label)
+        stats.addWidget(self.rank_reps_label)
+        stats.addWidget(self.streak_label)
+        stats.addWidget(self.rank_progress)
+
+
+        self.streak_effect = QGraphicsOpacityEffect(self.streak_label)
+        self.streak_label.setGraphicsEffect(self.streak_effect)
+
+        self.streak_animation = QPropertyAnimation(self.streak_effect, b"opacity")
+        self.streak_animation.setDuration(450)
+        self.streak_animation.setStartValue(0.25)
+        self.streak_animation.setEndValue(1.0)
 
         #Initialise music
         pygame.mixer.init()
@@ -94,7 +121,7 @@ class MainWindow(QMainWindow):
         pygame.mixer.music.play(-1)
         tracker.change_music_vol(self.music_value)
 
-        for label in (self.reps_label, self.stage_label, self.form_label, self.angle_label, self.time_label):
+        for label in (self.stage_label, self.form_label, self.angle_label, self.time_label):
             label.setStyleSheet("font-size: 18px; font-weight: 700; padding: 6px;")
             stats.addWidget(label)
 
@@ -118,6 +145,7 @@ class MainWindow(QMainWindow):
         self.volume_slider.setValue(10)
         stats.addWidget(self.volume_label)
         stats.addWidget(self.volume_slider)
+
 
         self.goal_label = QLabel("GOAL\nNone")
         self.goal_input = QSpinBox()
@@ -299,6 +327,8 @@ class MainWindow(QMainWindow):
                                 else:
                                     self.reps += 1
                                     form_text = "GOOD"
+                                    self.update_rank_display()
+                                    self.animate_streak()
                                     if self.beep_enabled:
                                         tracker.play_beep()
                                     tracker.check_and_trigger(self.reps)
@@ -322,14 +352,13 @@ class MainWindow(QMainWindow):
         minutes, seconds = divmod(elapsed, 60)
         elapsed_text = f"{minutes:02d}:{seconds:02d}"
 
-        self.reps_label.setText(f"REPS\n{self.reps}")
+        self.update_rank_display()
         self.stage_label.setText(f"POSITION\n{self.stage}")
         self.form_label.setText(f"FORM\n{form_text}")
         self.angle_label.setText(f"ELBOW ANGLE\n{filtered_elbow_angle:.1f}" if filtered_elbow_angle is not None else "ELBOW ANGLE\nN/A")
         self.time_label.setText(f"TIME\n{elapsed_text}")
 
 
-        self.reps_label.setStyleSheet("font-size: 18px; font-weight: 700; padding: 6px; color: #00ff78;") #CSS for reps label
         if form_text == "GOOD":
             form_colour = "00ff78"
         elif form_text in ("BAD", "BAD FORM", "INVALID FORM", "TOO FAST"):
@@ -359,9 +388,6 @@ class MainWindow(QMainWindow):
                 self.goal_label.setText(f"GOAL\n{self.reps}/{self.target_reps} ✓")
             else:
                 self.goal_label.setText(f"GOAL\n{self.reps}/{self.target_reps}")
-    
-    
-
 
         rgb_display = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         height, width, channels = rgb_display.shape
@@ -388,6 +414,10 @@ class MainWindow(QMainWindow):
         self.beep_enabled = not self.beep_enabled
         self.beep_button.setText(f"Beep: {'ON' if self.beep_enabled else 'OFF'}")
 
+    def animate_streak(self):
+        self.streak_animation.stop()
+        self.streak_animation.start()
+
 
     def toggle_music(self):
         self.music_enabled = not self.music_enabled
@@ -401,6 +431,48 @@ class MainWindow(QMainWindow):
         self.music_value = value
         tracker.change_music_vol(value)
         self.volume_label.setText(f"VOLUME: {value}%")
+
+    def get_rank_info(self):
+        ranks = [
+        (0, "IRON", "#9ca3af"),
+        (5, "BRONZE", "#cd7f32"),
+        (9, "SILVER", "#cbd5e1"),
+        (13, "GOLD", "#facc15"),
+        (17, "PLATINUM", "#2dd4bf"),
+        (21, "DIAMOND", "#60a5fa"),
+        (25, "ASCENDANT", "#4ade80"),
+        (30, "IMMORTAL", "#f43f5e"),
+        (40, "RADIANT", "#fde68a")]
+
+        for index in range(len(ranks) - 1, -1, -1):
+            threshold, rank, colour = ranks[index]
+            if self.reps >= threshold:
+                if index == len(ranks) - 1:
+                    return rank, colour, 100, None
+
+                next_threshold = ranks[index + 1][0]
+                next_rank = ranks[index + 1][1]
+
+                progress = int(((self.reps - threshold) /(next_threshold - threshold)) * 100)
+
+                return rank, colour, progress, next_rank
+
+    def update_rank_display(self):
+        rank, colour, progress, next_rank = self.get_rank_info()
+        self.rank_label.setText(rank)
+        self.rank_label.setStyleSheet(
+        f"font-size: 30px; font-weight: 900; color: {colour};")
+
+        self.rank_reps_label.setText(f"{self.reps} PUSH-UPS")
+
+        self.streak_label.setText(f"🔥 STREAK {self.reps} 🔥" if self.reps > 0 else "STREAK 0")
+
+        self.rank_progress.setValue(progress)
+
+        if next_rank is None:
+            self.rank_progress.setFormat("MAX RANK")
+        else:
+            self.rank_progress.setFormat(f"{progress}% TO {next_rank}")
 
     def closeEvent(self, event):
         self.timer.stop()
