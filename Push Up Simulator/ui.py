@@ -160,8 +160,8 @@ class MainWindow(QMainWindow):
         side.setMaximumWidth(320)
 
         stats = QVBoxLayout(side)
-        stats.setContentsMargins(18, 18, 18, 18)
-        stats.setSpacing(8) 
+        stats.setContentsMargins(12, 10, 12, 10)
+        stats.setSpacing(4) 
 
 
         self.rank_label = QLabel("IRON")
@@ -177,9 +177,9 @@ class MainWindow(QMainWindow):
         self.rank_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.rank_reps_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.streak_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.rank_label.setStyleSheet("font-size: 30px; font-weight: 900; color: #9ca3af;")
-        self.rank_reps_label.setStyleSheet("font-size: 20px; font-weight: 800; color: white;")
-        self.streak_label.setStyleSheet("font-size: 18px; font-weight: 800; color: #ff8c32;")
+        self.rank_label.setStyleSheet("font-size: 24px; font-weight: 900; color: #9ca3af;")
+        self.rank_reps_label.setStyleSheet("font-size: 16px; font-weight: 800; color: white;")
+        self.streak_label.setStyleSheet("font-size: 15px; font-weight: 800; color: #ff8c32;")
         self.rank_progress.setRange(0, 100)
         self.rank_progress.setValue(0)
         self.rank_progress.setTextVisible(True)
@@ -206,7 +206,7 @@ class MainWindow(QMainWindow):
         tracker.change_music_vol(self.music_value)
 
         for label in (self.stage_label, self.form_label, self.angle_label, self.time_label):
-            label.setStyleSheet("font-size: 18px; font-weight: 700; padding: 6px;")
+            label.setStyleSheet("font-size: 15x; font-weight: 700; padding: 2px;")
             stats.addWidget(label)
 
 
@@ -216,7 +216,7 @@ class MainWindow(QMainWindow):
         self.end_button = QPushButton("End Session")
     
         for button in (self.reset_button, self.beep_button, self.music_button, self.end_button):
-            button.setMinimumHeight(42)
+            button.setMinimumHeight(32)
             button.setStyleSheet("QPushButton { background: #21262d; color: white; border: 1px solid #30363d; border-radius: 8px; font-weight: 700; } QPushButton:hover { background: #30363d; }")
             stats.addWidget(button)
 
