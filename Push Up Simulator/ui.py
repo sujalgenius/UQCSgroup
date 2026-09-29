@@ -46,7 +46,6 @@ class MainWindow(QMainWindow):
 
         self.stack = QStackedWidget()
         self.setCentralWidget(self.stack)
-    
         self.tracker_page = QWidget()
         self.summary_page = QWidget()
         self.stack.addWidget(self.tracker_page)
@@ -225,10 +224,7 @@ class MainWindow(QMainWindow):
         content.addWidget(self.camera_label, 4)
         content.addWidget(side, 1)
         main_layout.addLayout(content)
-        content.addWidget(analysis_panel, 1)
-        content.addWidget(self.camera_label, 4)
-        content.addWidget(side, 1)
-        main_layout.addLayout(content)
+     
 
         self.volume_label = QLabel("VOLUME: 10%")
         self.volume_slider = QSlider(Qt.Orientation.Horizontal)
