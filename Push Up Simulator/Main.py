@@ -30,6 +30,8 @@ ARM_VISIBILITY = 0.30
 BODY_VISIBILITY = 0.20   
 DOWN_CONFIRM_TIME = 0.10 
 UP_CONFIRM_TIME = 0.10
+
+
 ANGLE_HISTORY_SIZE = 3
 PEACE_CONFIRM_FRAMES = 8
 BODY_ALIGNMENT_THRESHOLD_ANGLE = 150
@@ -41,7 +43,7 @@ ALIGNMENT_SWITCH_MARGIN = 0.08
 
 
 #Variables for better side detection
-SIDE_SWITCH_FRAMES = 20
+SIDE_SWITCH_FRAMES = 10
 SIDE_SWITCH_MARGIN = 0.15
 
 #Target rep key dictionary
@@ -103,18 +105,22 @@ def calculate_angle(point_a, point_b, point_c):
     return float(np.degrees(np.arccos(cosine))) #Angle in degrees between vectors BA and BC
 
 
-def check_alignment(frame, landmarks, alignment_side):
+def check_alignment(frame, landmarks, alignment_side, show_text=True):
 
     ids = BODY[alignment_side]
     shoulder_raw_coord = landmarks[ids["shoulder"]]
     hip_raw_coord = landmarks[ids["hip"]]
     ankle_raw_coord = landmarks[ids["ankle"]]
+
+    alignment_correct = False
     
     if (shoulder_raw_coord.visibility < ALIGNMENT_VISIBILITY or hip_raw_coord.visibility < ALIGNMENT_VISIBILITY or  ankle_raw_coord.visibility < ALIGNMENT_VISIBILITY):
-        draw_text(frame, "Alignment not visible!", (25, 415), ORANGE, 2.5, 2)
-        return False 
+        if show_text:
+            draw_text(frame, "Alignment not visible!", (25, 415), ORANGE, 2.5, 2)
+        return alignment_correct
     body_angle = calculate_angle(get_point(shoulder_raw_coord), get_point(hip_raw_coord), get_point(ankle_raw_coord))
-
+    if body_angle is None:
+        return alignment_correct 
     alignment_correct = (body_angle >= BODY_ALIGNMENT_THRESHOLD_ANGLE)
     height, width = frame.shape[:2]
 
@@ -123,12 +129,12 @@ def check_alignment(frame, landmarks, alignment_side):
     
     if alignment_correct:
         cv2.line(frame, shoulder_pixel_coord, ankle_pixel_coord, GREEN, 6, cv2.LINE_AA)
-        draw_text(frame, "Alignment straight!", (25, 415), GREEN, 2.5, 2)
+        if show_text:
+            draw_text(frame, "Alignment straight!", (25, 415), GREEN, 2.5, 2)
     else:
-        draw_text(frame, "Alignment isnt straight!", (25, 415), RED, 2.5, 2)
+        if show_text:
+            draw_text(frame, "Alignment isnt straight!", (25, 415), RED, 2.5, 2)
         
-    shoulder_x, shoulder_y = shoulder_pixel_coord
-    draw_text(frame, f"{body_angle:.1f}", (shoulder_x - 80, shoulder_y - 10), WHITE, 0.7)
     return alignment_correct
 
 def get_point(landmark):
@@ -253,7 +259,7 @@ def draw_text(frame, text, position, color=WHITE, scale=0.7, thickness=2):
     cv2.putText(frame, text, (x, y), cv2.FONT_HERSHEY_PLAIN, scale, color, thickness, cv2.LINE_AA)
 
 
-def draw_active_side(frame, landmarks, side, alignment_side):
+def draw_active_side(frame, landmarks, side, alignment_side, show_text=True):
     height, width = frame.shape[:2] #Get the height and width of the frame
     landmarks_dict = BODY[side] #Retrieve all the landmarks based on the side (left or right) and store them in dict
     points = {}
@@ -266,7 +272,7 @@ def draw_active_side(frame, landmarks, side, alignment_side):
     cv2.line(frame, points["elbow"], points["shoulder"], (0, 255, 255), 5, cv2.LINE_AA)
 
     #Check body alignment:
-    alignment_correct = check_alignment(frame, landmarks, alignment_side)
+    alignment_correct = check_alignment(frame, landmarks, alignment_side, show_text)
 
 
     # TORSO

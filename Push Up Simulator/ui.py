@@ -1,10 +1,12 @@
 import sys
 import time
 import cv2
+import pygame
+import os
 
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QImage, QPixmap
-from PySide6.QtWidgets import QApplication, QFrame, QHBoxLayout, QLabel, QMainWindow, QPushButton, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QApplication, QFrame, QHBoxLayout, QLabel, QMainWindow, QPushButton, QVBoxLayout, QWidget, QSlider, QSpinBox, QSizePolicy
 
 import main as tracker
 
@@ -14,7 +16,7 @@ class MainWindow(QMainWindow):
         super().__init__()
 
         self.setWindowTitle("Push-Up Tracker")
-        self.resize(1350, 800)
+        self.resize(1200, 700)
 
         self.cap = cv2.VideoCapture(0)
         self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, tracker.CAM_WIDTH)
@@ -23,7 +25,12 @@ class MainWindow(QMainWindow):
 
         self.reps = 0
         self.stage = "UP"
+        self.target_reps = None
+
         self.beep_enabled = True
+        self.music_enabled = True
+        self.music_value = 10
+
         self.start_time = time.monotonic()
 
         self.down_confirm_start = None
@@ -52,32 +59,45 @@ class MainWindow(QMainWindow):
 
         self.camera_label = QLabel("Opening camera...")
         self.camera_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.camera_label.setMinimumSize(850, 560)
+        self.camera_label.setMinimumSize(0, 0) #Automatically set size
         self.camera_label.setStyleSheet("background: #05070a; border: 1px solid #30363d; border-radius: 12px; color: #8b949e;")
+        self.camera_label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Ignored)
         content.addWidget(self.camera_label, 3)
 
         side = QFrame()
         side.setStyleSheet("QFrame { background: #161b22; border: 1px solid #30363d; border-radius: 12px; } QLabel { color: white; border: none; }")
+        side.setMinimumWidth(260)
+        side.setMaximumWidth(320)
 
         stats = QVBoxLayout(side)
         stats.setContentsMargins(18, 18, 18, 18)
-        stats.setSpacing(18)
+        stats.setSpacing(8) 
+    
 
         self.reps_label = QLabel("REPS\n0")
         self.stage_label = QLabel("POSITION\nUP")
         self.form_label = QLabel("FORM\nWAITING")
+        self.angle_label = QLabel("ELBOW ANGLE\n0.0")
         self.time_label = QLabel("TIME\n00:00")
 
-        for label in (self.reps_label, self.stage_label, self.form_label, self.time_label):
-            label.setStyleSheet("font-size: 22px; font-weight: 700; padding: 14px;")
+        #Initialise music
+        pygame.mixer.init()
+        script_directory = os.path.dirname(os.path.abspath(__file__))
+        song_path = os.path.join(script_directory, "workout_song.mp3")
+        pygame.mixer.music.load(song_path)
+        pygame.mixer.music.play(-1)
+        tracker.change_music_vol(self.music_value)
+
+        for label in (self.reps_label, self.stage_label, self.form_label, self.angle_label, self.time_label):
+            label.setStyleSheet("font-size: 18px; font-weight: 700; padding: 6px;")
             stats.addWidget(label)
 
-        stats.addStretch()
 
         self.reset_button = QPushButton("Reset")
         self.beep_button = QPushButton("Beep: ON")
-
-        for button in (self.reset_button, self.beep_button):
+        self.music_button = QPushButton("Music: ON")
+    
+        for button in (self.reset_button, self.beep_button, self.music_button):
             button.setMinimumHeight(42)
             button.setStyleSheet("QPushButton { background: #21262d; color: white; border: 1px solid #30363d; border-radius: 8px; font-weight: 700; } QPushButton:hover { background: #30363d; }")
             stats.addWidget(button)
@@ -85,8 +105,33 @@ class MainWindow(QMainWindow):
         content.addWidget(side, 1)
         main_layout.addLayout(content)
 
+        self.volume_label = QLabel("VOLUME: 10%")
+        self.volume_slider = QSlider(Qt.Orientation.Horizontal)
+        self.volume_slider.setRange(0, 100)
+        self.volume_slider.setValue(10)
+        stats.addWidget(self.volume_label)
+        stats.addWidget(self.volume_slider)
+
+        self.goal_label = QLabel("GOAL\nNone")
+        self.goal_input = QSpinBox()
+        self.goal_input.setRange(1, 200)            
+        self.goal_input.setValue(20)
+        self.goal_button = QPushButton("Set Goal")
+
+        stats.addWidget(self.goal_label)
+        stats.addWidget(self.goal_input)
+        stats.addWidget(self.goal_button)
+
+        stats.addStretch()
+
+
+
+
         self.reset_button.clicked.connect(self.reset_tracker)
         self.beep_button.clicked.connect(self.toggle_beep)
+        self.music_button.clicked.connect(self.toggle_music)
+        self.volume_slider.valueChanged.connect(self.change_volume)
+        self.goal_button.clicked.connect(self.set_goal)
 
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.update_frame)
@@ -129,6 +174,7 @@ class MainWindow(QMainWindow):
         rgb.flags.writeable = True
 
         form_text = "WAITING"
+        filtered_elbow_angle = None
 
         if results.pose_landmarks:
             landmarks = results.pose_landmarks.landmark
@@ -141,7 +187,7 @@ class MainWindow(QMainWindow):
 
             if tracker.arm_visible(landmarks, self.locked_side):
                 self.tracking_lost_start = None
-                points, alignment_correct = tracker.draw_active_side(frame, landmarks, self.locked_side, self.alignment_side)
+                points, alignment_correct = tracker.draw_active_side(frame, landmarks, self.locked_side, self.alignment_side, show_text = False)
 
                 raw_elbow_angle = tracker.get_elbow_angle(landmarks, self.locked_side)
                 filtered_elbow_angle = tracker.filter_angle(tracker.elbow_history, raw_elbow_angle)
@@ -153,8 +199,6 @@ class MainWindow(QMainWindow):
                 form_text = "GOOD" if alignment_correct else "BAD"
 
                 if filtered_elbow_angle is not None:
-                    elbow_x, elbow_y = points["elbow"]
-                    tracker.draw_text(frame, f"{filtered_elbow_angle:.1f}", (elbow_x + 20, elbow_y - 15), tracker.YELLOW, 0.9, 2)
 
                     if self.stage == "UP":
                         self.rep_form_valid = True
@@ -195,7 +239,7 @@ class MainWindow(QMainWindow):
                                 rep_duration = current_time - self.rep_start_time if self.rep_start_time is not None else None
 
                                 if rep_duration is None:
-                                    form_text = "INVALID"
+                                    form_text = "INVALID FORM"
                                 elif rep_duration < tracker.MIN_REP_DURATION:
                                     form_text = "TOO FAST"
                                 elif not self.rep_form_valid:
@@ -207,6 +251,8 @@ class MainWindow(QMainWindow):
                                         tracker.play_beep()
                                     tracker.check_and_trigger(self.reps)
                                     tracker.check_milestones(self.reps)
+                                    if self.target_reps is not None:
+                                        tracker.check_target(self.reps, self.target_reps)
 
                                 self.reset_rep_state()
                         else:
@@ -219,8 +265,6 @@ class MainWindow(QMainWindow):
             form_text = "NO PERSON"
             self.handle_tracking_loss(current_time)
 
-        tracker.draw_text(frame, f"REPS: {self.reps}", (40, 90), tracker.GREEN, 4.5, 3)
-        tracker.draw_text(frame, f"POSITION: {self.stage}", (40, 180), tracker.GREEN if self.stage == "UP" else tracker.ORANGE, 4, 2)
 
         elapsed = int(current_time - self.start_time)
         minutes, seconds = divmod(elapsed, 60)
@@ -229,13 +273,26 @@ class MainWindow(QMainWindow):
         self.reps_label.setText(f"REPS\n{self.reps}")
         self.stage_label.setText(f"POSITION\n{self.stage}")
         self.form_label.setText(f"FORM\n{form_text}")
+        self.angle_label.setText(f"ELBOW ANGLE\n{filtered_elbow_angle:.1f}" if filtered_elbow_angle is not None else "ELBOW ANGLE\nN/A")
         self.time_label.setText(f"TIME\n{elapsed_text}")
+        if self.target_reps is not None:
+            if self.reps >= self.target_reps:
+                self.goal_label.setText(f"GOAL\n{self.reps}/{self.target_reps} ✓")
+            else:
+                self.goal_label.setText(f"GOAL\n{self.reps}/{self.target_reps}")
+    
+    
+
 
         rgb_display = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         height, width, channels = rgb_display.shape
         image = QImage(rgb_display.data, width, height, channels * width, QImage.Format.Format_RGB888).copy()
         pixmap = QPixmap.fromImage(image).scaled(self.camera_label.size(), Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
         self.camera_label.setPixmap(pixmap)
+
+    def set_goal(self):
+        self.target_reps = self.goal_input.value()
+        self.goal_label.setText(f"GOAL\n0/{self.target_reps}")
 
     def reset_tracker(self):
         self.reps = 0
@@ -251,6 +308,20 @@ class MainWindow(QMainWindow):
     def toggle_beep(self):
         self.beep_enabled = not self.beep_enabled
         self.beep_button.setText(f"Beep: {'ON' if self.beep_enabled else 'OFF'}")
+
+
+    def toggle_music(self):
+        self.music_enabled = not self.music_enabled
+        if self.music_enabled:
+            pygame.mixer.music.unpause()
+        else:
+            pygame.mixer.music.pause()
+        self.music_button.setText(f"Music: {'ON' if self.music_enabled else 'OFF'}")
+
+    def change_volume(self, value):
+        self.music_value = value
+        tracker.change_music_vol(value)
+        self.volume_label.setText(f"VOLUME: {value}%")
 
     def closeEvent(self, event):
         self.timer.stop()
