@@ -8,6 +8,9 @@ from PySide6.QtCore import Qt, QTimer, QPropertyAnimation
 from PySide6.QtGui import QImage, QPixmap, QShortcut
 from PySide6.QtWidgets import QApplication, QFrame, QHBoxLayout, QLabel, QMainWindow, QPushButton, QVBoxLayout, QWidget, QSlider, QSpinBox, QSizePolicy, QStackedWidget, QProgressBar, QGraphicsOpacityEffect
 
+from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
+from matplotlib.figure import Figure
+
 import Main as tracker
 
 class MainWindow(QMainWindow):
@@ -31,17 +34,18 @@ class MainWindow(QMainWindow):
         self.music_enabled = True
         self.music_value = 10
 
-        self.start_time = time.monotonic()
+        self.start_time = time.monotonic() #Set universal time clock
 
-        self.down_confirm_start = None
+        self.down_confirm_start = None 
         self.up_confirm_start = None
+        self.rep_start_time = None
+
         self.locked_side = None
         self.bad_side_frames = 0
         self.alignment_side = None
         self.alignment_switch_frames = 0
         self.rep_form_valid = True
         self.tracking_lost_start = None
-        self.rep_start_time = None
 
 
         self.stack = QStackedWidget()
@@ -85,11 +89,9 @@ class MainWindow(QMainWindow):
         analysis_layout.setContentsMargins(16, 18, 16, 18)
         analysis_layout.setSpacing(12)
 
-
+        #Declare analysis_title
         analysis_title = QLabel("REP ANALYSER")
-
         analysis_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-
         analysis_title.setStyleSheet(
     """
     font-size: 19px;
@@ -98,11 +100,8 @@ class MainWindow(QMainWindow):
     """
 )
 
-
         self.analysis_rep_label = QLabel("WAITING\nFOR REP")
-
         self.analysis_rep_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-
         self.analysis_rep_label.setStyleSheet(
     """
     font-size: 16px;
@@ -152,7 +151,7 @@ class MainWindow(QMainWindow):
         self.camera_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.camera_label.setMinimumSize(0, 0) #Automatically set size
         self.camera_label.setStyleSheet("background: #05070a; border: 1px solid #30363d; border-radius: 12px; color: #8b949e;")
-        self.camera_label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Ignored)
+        self.camera_label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Ignored) 
 
         side = QFrame()
         side.setStyleSheet("QFrame { background: #161b22; border: 1px solid #30363d; border-radius: 12px; } QLabel { color: white; border: none; }")
@@ -173,7 +172,7 @@ class MainWindow(QMainWindow):
         self.angle_label = QLabel("ELBOW ANGLE\n0.0")
         self.time_label = QLabel("TIME\n00:00")
 
-
+        #Rank labels
         self.rank_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.rank_reps_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.streak_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -183,6 +182,8 @@ class MainWindow(QMainWindow):
         self.rank_progress.setRange(0, 100)
         self.rank_progress.setValue(0)
         self.rank_progress.setTextVisible(True)
+
+        
         stats.addWidget(self.rank_label)
         stats.addWidget(self.rank_reps_label)
         stats.addWidget(self.streak_label)
@@ -200,13 +201,13 @@ class MainWindow(QMainWindow):
         #Initialise music
         pygame.mixer.init()
         script_directory = os.path.dirname(os.path.abspath(__file__))
-        song_path = os.path.join(script_directory, "workout_song.mp3")
+        song_path = os.path.join(script_directory, "stargirl.mp3")
         pygame.mixer.music.load(song_path)
         pygame.mixer.music.play(-1)
         tracker.change_music_vol(self.music_value)
 
         for label in (self.stage_label, self.form_label, self.angle_label, self.time_label):
-            label.setStyleSheet("font-size: 15x; font-weight: 700; padding: 2px;")
+            label.setStyleSheet("font-size: 15px; font-weight: 700; padding: 2px;")
             stats.addWidget(label)
 
 
@@ -220,9 +221,9 @@ class MainWindow(QMainWindow):
             button.setStyleSheet("QPushButton { background: #21262d; color: white; border: 1px solid #30363d; border-radius: 8px; font-weight: 700; } QPushButton:hover { background: #30363d; }")
             stats.addWidget(button)
 
-        content.addWidget(analysis_panel, 1)
-        content.addWidget(self.camera_label, 4)
-        content.addWidget(side, 1)
+        content.addWidget(analysis_panel, 5)
+        content.addWidget(self.camera_label, 14)
+        content.addWidget(side, 5)
         main_layout.addLayout(content)
      
 
@@ -271,13 +272,28 @@ class MainWindow(QMainWindow):
         summary_title.setStyleSheet("font-size: 36px; font-weight: 800; color: white;")
 
         self.summary_reps = QLabel("TOTAL REPS\n0")
+        self.summary_average = QLabel("AVERAGE SCORE\n --")
         self.summary_calories = QLabel("CALORIES\n0.0 kcal")
         self.summary_time = QLabel("TIME\n00:00")
 
-        for label in self.summary_reps, self.summary_calories, self.summary_time:
+        #Set CSS
+
+        for label in self.summary_reps, self.summary_calories, self.summary_time, self.summary_average:
             label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            label.setStyleSheet(
-        "font-size: 26px; font-weight: 700; color: white; padding: 20px;")
+            label.setStyleSheet("font-size: 26px; font-weight: 700; color: white; padding: 20px;")
+
+        summary_stats = QHBoxLayout()
+        summary_stats.addWidget(self.summary_reps)
+        summary_stats.addWidget(self.summary_average)
+        summary_stats.addWidget(self.summary_calories)
+        summary_stats.addWidget(self.summary_time)
+
+        self.summary_figure = Figure(figsize=(7, 3))
+        self.summary_canvas = FigureCanvas(self.summary_figure)
+        self.summary_canvas.setStyleSheet("background: transparent; border: none;")
+        self.summary_ax = self.summary_figure.add_subplot(1,1,1) #1 row, 1 column, plot number 1
+        self.summary_figure.subplots_adjust(left=0.08, right=0.98, top=0.85, bottom=0.22)
+
         self.restart_button = QPushButton("Restart Workout")
         self.quit_button = QPushButton("Quit")
         self.restart_button.clicked.connect(self.restart_session)
@@ -286,25 +302,26 @@ class MainWindow(QMainWindow):
         for button in (self.restart_button, self.quit_button):
             button.setMinimumHeight(50)
             button.setStyleSheet(
-        "QPushButton {"
-        "background: #21262d;"
-        "color: white;"
-        "border: 1px solid #30363d;"
-        "border-radius: 8px;"
-        "font-size: 18px;"
-        "font-weight: 700;"
-        "}"
-        "QPushButton:hover { background: #30363d; }"
-    )
-            summary_layout.addStretch()
-            summary_layout.addWidget(summary_title)
-            summary_layout.addWidget(self.summary_reps)
-            summary_layout.addWidget(self.summary_calories)
-            summary_layout.addWidget(self.summary_time)
-            summary_layout.addWidget(self.restart_button)
-            summary_layout.addWidget(self.quit_button)
-            summary_layout.addStretch()
-            self.summary_page.setStyleSheet("background: #0d1117;")
+                "QPushButton {"
+                "background: #21262d;"
+                "color: white;"
+                "border: 1px solid #30363d;"
+                "border-radius: 8px;"
+                "font-size: 18px;"
+                "font-weight: 700;"
+                "}"
+            "QPushButton:hover { background: #30363d; }")
+
+        summary_layout.addStretch()
+        summary_layout.addWidget(summary_title)
+
+        summary_layout.addLayout(summary_stats)
+
+        summary_layout.addWidget(self.summary_canvas, 1)
+        summary_layout.addWidget(self.restart_button)
+        summary_layout.addWidget(self.quit_button)
+        summary_layout.addStretch()
+        self.summary_page.setStyleSheet("background: #0d1117;")
 
         #tracker.show_instructions()
 
@@ -349,7 +366,7 @@ class MainWindow(QMainWindow):
         self.current_rep_min_angle = None
         self.current_rep_alignment_good = True
 
-    def handle_tracking_loss(self, current_time):
+    def handle_tracking_loss(self, current_time): #afk detection
         self.clear_histories()
         if self.tracking_lost_start is None:
             self.tracking_lost_start = current_time
@@ -364,8 +381,8 @@ class MainWindow(QMainWindow):
         success, frame = self.cap.read()
         if not success:
             return
-
-        current_time = time.monotonic() #Current_time is an increasing clock. Current_time records current time, and differences from it are important
+        
+        current_time = time.monotonic() 
         frame = cv2.flip(frame, 1)
         self.last_frame = frame.copy()
 
@@ -457,7 +474,6 @@ class MainWindow(QMainWindow):
                                 self.up_confirm_start = current_time
                             elif current_time - self.up_confirm_start >= tracker.UP_CONFIRM_TIME:
                                 rep_duration = current_time - self.rep_start_time if self.rep_start_time is not None else None
-
                                 if rep_duration is None:
                                     form_text = "INVALID FORM"
                                 elif rep_duration < tracker.MIN_REP_DURATION:
@@ -486,11 +502,7 @@ class MainWindow(QMainWindow):
                                          score_colour = "#facc15"
                                     else:
                                          score_colour = "#ff4d4d"
-                                         self.analysis_score_label.setStyleSheet(f"""
-                                        font-size: 28px;
-                                        font-weight: 900;
-                                        color: {score_colour};
-                                        """)
+                                    self.analysis_score_label.setStyleSheet(f"""font-size: 28px; font-weight: 900;color: {score_colour}; """)
 
                                     #Update rank, play animation
                                     self.update_rank_display()
@@ -559,7 +571,10 @@ class MainWindow(QMainWindow):
 
         rgb_display = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         height, width, channels = rgb_display.shape
-        image = QImage(rgb_display.data, width, height, channels * width, QImage.Format.Format_RGB888).copy()
+
+        image = QImage(rgb_display.data, width, height, channels * width, QImage.Format.Format_RGB888).copy() #Convert to QImage
+
+        #Actual pixel data, image width, image height, bytes per row
         pixmap = QPixmap.fromImage(image).scaled(self.camera_label.size(), Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
         self.camera_label.setPixmap(pixmap)
 
@@ -573,6 +588,7 @@ class MainWindow(QMainWindow):
         self.locked_side = None
         self.bad_side_frames = 0
         self.alignment_side = None
+        self.rep_history.clear()
         self.alignment_switch_frames = 0
         self.tracking_lost_start = None
         self.clear_histories()
@@ -678,12 +694,117 @@ class MainWindow(QMainWindow):
         minutes = int(passed_time // 60)
         seconds = int(passed_time % 60)
 
+        if self.rep_history:
+            average_score = sum(rep["score"] for rep in self.rep_history) / len(self.rep_history)
+        else:
+            average_score = 0
+
         self.summary_reps.setText(f"TOTAL REPS\n{self.reps}")
         self.summary_calories.setText(f"CALORIES\n{calories:.1f} kcal")
         self.summary_time.setText(f"TIME\n{minutes:02d}:{seconds:02d}")
+        self.summary_average.setText(f"AVERAGE SCORE\n{average_score:.0f}/100")
+
+        self.update_summary_graph()
+        
+
 
         self.stack.setCurrentWidget(self.summary_page)
 
+
+    def update_summary_graph(self):
+        ax = self.summary_ax
+        fig = self.summary_figure
+
+        ax.clear()
+        fig.patch.set_facecolor("#0d1117")
+        ax.set_facecolor("#161b22")
+
+        if not self.rep_history:
+            ax.text(
+            0.5, 0.5,
+            "No Reps Recorded!",
+            ha="center",
+            va="center",
+            color="white",
+            fontsize=16,
+            fontweight="bold")
+            ax.set_xticks([])
+            ax.set_yticks([])
+            for spine in ax.spines.values():
+                spine.set_visible(False)
+            self.summary_canvas.draw()
+            return
+
+        rep_numbers = list(range(1, len(self.rep_history) + 1))
+        scores = [rep["score"] for rep in self.rep_history]
+        ax.plot(rep_numbers,
+        scores,
+        linewidth=8,
+        color="#00d9ff",
+        alpha=0.12)
+        ax.plot(
+        rep_numbers,
+        scores,
+        marker="o",
+        linewidth=2.8,
+        markersize=8,
+        color="#00d9ff",
+        markerfacecolor="#00d9ff",
+        markeredgecolor="white",
+        markeredgewidth=1.2)
+
+    
+        ax.fill_between(
+        rep_numbers,
+        scores,
+        0,
+        color="#00d9ff",
+        alpha=0.08)
+
+
+        ax.set_title(
+        "REP SCORE",
+        color="white",
+        fontsize=18,
+        fontweight="bold",
+        pad=10)
+
+        ax.set_xlabel("Rep", color="#c9d1d9", fontsize=11, fontweight="bold")
+        ax.set_ylabel("Score", color="#c9d1d9", fontsize=11, fontweight="bold")
+        ax.set_ylim(0, 100)
+        ax.set_xlim(1, len(rep_numbers))
+        ax.tick_params(axis="x", colors="#c9d1d9", labelsize=11)
+        ax.tick_params(axis="y", colors="#c9d1d9", labelsize=11)
+
+        for spine in ax.spines.values():
+            spine.set_color("#30363d")
+            spine.set_linewidth(1.2)
+
+        ax.grid(True, color="#30363d", linestyle="--", linewidth=0.8, alpha=0.7)
+
+  
+        ax.scatter(
+        rep_numbers[-1],
+        scores[-1],
+        s=140,
+        color="#7ee787",
+        edgecolors="white",
+        linewidths=1.5,
+        zorder=5)
+
+        ax.annotate(
+        f"{scores[-1]}",
+        (rep_numbers[-1], scores[-1]),
+        textcoords="offset points",
+        xytext=(0, 10),
+        ha="center",
+        color="#7ee787",
+        fontsize=10,
+        fontweight="bold")
+
+        self.summary_canvas.draw()
+
+        
     def restart_session(self):
         self.reset_tracker()
         self.stack.setCurrentWidget(self.tracker_page)
