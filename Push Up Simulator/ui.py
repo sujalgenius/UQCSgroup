@@ -28,7 +28,6 @@ class MainWindow(QMainWindow):
         self.reps = 0
         self.stage = "UP"
         self.target_reps = None
-        self.last_frame = None
 
         self.beep_enabled = True
         self.music_enabled = True
@@ -71,19 +70,18 @@ class MainWindow(QMainWindow):
         analysis_panel.setMinimumWidth(210)
         analysis_panel.setMaximumWidth(240)
 
-        analysis_panel.setStyleSheet(
-    """
-    QFrame {
-        background: #161b22;
-        border: 1px solid #30363d;
-        border-radius: 12px;
-    }
+        analysis_panel.setStyleSheet("""
+        QFrame {
+            background: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 12px;
+        }
 
-    QLabel {
-        border: none;
-        color: white;
-    }
-    """)
+        QLabel {
+            border: none;
+            color: white;
+        }
+        """)
         
         analysis_layout = QVBoxLayout(analysis_panel)
         analysis_layout.setContentsMargins(16, 18, 16, 18)
@@ -93,12 +91,12 @@ class MainWindow(QMainWindow):
         analysis_title = QLabel("REP ANALYSER")
         analysis_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         analysis_title.setStyleSheet(
-    """
-    font-size: 19px;
-    font-weight: 900;
-    color: #00d9ff;
-    """
-)
+            """
+            font-size: 19px;
+            font-weight: 900;
+            color: #00d9ff;
+            """
+            )
 
         self.analysis_rep_label = QLabel("WAITING\nFOR REP")
         self.analysis_rep_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -134,7 +132,6 @@ class MainWindow(QMainWindow):
         font-weight: 700;
         padding: 5px;
         """)
-
 
         analysis_layout.addWidget(analysis_title)
         analysis_layout.addWidget(self.analysis_rep_label)
@@ -201,7 +198,7 @@ class MainWindow(QMainWindow):
         #Initialise music
         pygame.mixer.init()
         script_directory = os.path.dirname(os.path.abspath(__file__))
-        song_path = os.path.join(script_directory, "stargirl.mp3")
+        song_path = os.path.join(script_directory, "workout_song.mp3")
         pygame.mixer.music.load(song_path)
         pygame.mixer.music.play(-1)
         tracker.change_music_vol(self.music_value)
@@ -354,8 +351,6 @@ class MainWindow(QMainWindow):
 
     def clear_histories(self):
         tracker.elbow_history.clear()
-        tracker.hip_history.clear()
-        tracker.knee_history.clear()
 
     def reset_rep_state(self):
         self.stage = "UP"
@@ -371,8 +366,10 @@ class MainWindow(QMainWindow):
         if self.tracking_lost_start is None:
             self.tracking_lost_start = current_time
             return
+        
         if current_time - self.tracking_lost_start < tracker.TRACKING_LOSS_GRACE:
             return
+        
         self.reset_rep_state()
         self.alignment_side = None
         self.alignment_switch_frames = 0
@@ -384,16 +381,15 @@ class MainWindow(QMainWindow):
         
         current_time = time.monotonic() 
         frame = cv2.flip(frame, 1)
-        self.last_frame = frame.copy()
 
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        rgb.flags.writeable = False
 
         #Convert tracker to rgb
+        rgb.flags.writeable = False
         results = tracker.pose.process(rgb)
         rgb.flags.writeable = True
-    
 
+    
         form_text = "WAITING"
         filtered_elbow_angle = None
 
@@ -420,11 +416,6 @@ class MainWindow(QMainWindow):
                         self.current_rep_min_angle = filtered_elbow_angle
                     else:
                         self.current_rep_min_angle = min(self.current_rep_min_angle, filtered_elbow_angle)
-
-
-                raw_hip_angle, raw_knee_angle = tracker.get_body_angles(landmarks, self.alignment_side)
-                tracker.filter_angle(tracker.hip_history, raw_hip_angle)
-                tracker.filter_angle(tracker.knee_history, raw_knee_angle)
 
                 form_text = "GOOD" if alignment_correct else "BAD"
 
@@ -541,7 +532,7 @@ class MainWindow(QMainWindow):
 
 
         if form_text == "GOOD":
-            form_colour = "00ff78"
+            form_colour = "#00ff78"
         elif form_text in ("BAD", "BAD FORM", "INVALID FORM", "TOO FAST"):
             form_colour = "#ff4d4d"
         elif form_text in ("TRACKING LOST", "NO PERSON"):
