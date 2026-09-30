@@ -195,7 +195,7 @@ class MainWindow(QMainWindow):
 
         self.streak_animation = QPropertyAnimation(self.streak_effect, b"opacity")
         self.streak_animation.setDuration(450)
-        self.streak_animation.setStartValue(0.25)
+        self.streak_animation.setStartValue(0.35)
         self.streak_animation.setEndValue(1.0)
 
         #Initialise music
@@ -421,7 +421,6 @@ class MainWindow(QMainWindow):
                     else:
                         self.current_rep_min_angle = min(self.current_rep_min_angle, filtered_elbow_angle)
 
-            
 
                 raw_hip_angle, raw_knee_angle = tracker.get_body_angles(landmarks, self.alignment_side)
                 tracker.filter_angle(tracker.hip_history, raw_hip_angle)
@@ -502,7 +501,8 @@ class MainWindow(QMainWindow):
                                          score_colour = "#facc15"
                                     else:
                                          score_colour = "#ff4d4d"
-                                    self.analysis_score_label.setStyleSheet(f"""font-size: 28px; font-weight: 900;color: {score_colour}; """)
+
+                                    self.analysis_score_label.setStyleSheet(f"""font-size: 28px; font-weight: 900;color: {score_colour}; """) #Set colour
 
                                     #Update rank, play animation
                                     self.update_rank_display()
@@ -511,6 +511,7 @@ class MainWindow(QMainWindow):
                                     #Play beep sound
                                     if self.beep_enabled:
                                         tracker.play_beep()
+
                                     tracker.check_and_trigger(self.reps)
                                     tracker.check_milestones(self.reps)
                                     if self.target_reps is not None:
@@ -664,13 +665,10 @@ class MainWindow(QMainWindow):
     def update_rank_display(self):
         rank, colour, progress, next_rank = self.get_rank_info()
         self.rank_label.setText(rank)
-        self.rank_label.setStyleSheet(
-        f"font-size: 30px; font-weight: 900; color: {colour};")
+        self.rank_label.setStyleSheet(f"font-size: 30px; font-weight: 900; color: {colour};")
 
         self.rank_reps_label.setText(f"{self.reps} PUSH-UPS")
-
         self.streak_label.setText(f"🔥 STREAK {self.reps} 🔥" if self.reps > 0 else "STREAK 0")
-
         self.rank_progress.setValue(progress)
 
         if next_rank is None:
@@ -705,8 +703,6 @@ class MainWindow(QMainWindow):
         self.summary_average.setText(f"AVERAGE SCORE\n{average_score:.0f}/100")
 
         self.update_summary_graph()
-        
-
 
         self.stack.setCurrentWidget(self.summary_page)
 
@@ -803,7 +799,6 @@ class MainWindow(QMainWindow):
         fontweight="bold")
 
         self.summary_canvas.draw()
-
         
     def restart_session(self):
         self.reset_tracker()
